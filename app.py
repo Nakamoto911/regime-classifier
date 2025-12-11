@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plots
-from sklearn.preprocessing import RobustScaler, MinMaxScaler, normalize
+from sklearn.preprocessing import RobustScaler, normalize
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 from sklearn.mixture import GaussianMixture
@@ -20,29 +20,6 @@ DEFAULT_END_DATE = '2023-01-01'
 FRED_MD_URL = "https://files.stlouisfed.org/files/htdocs/fred-md/monthly/current.csv"
 LOCAL_FRED_MD_PATH = '2025-11-MD.csv' # Keep reference, but allow override
 LOCAL_APPENDIX_PATH = 'FRED-MD_updated_appendix.csv'
-
-# NBER Recession Dates (Hardcoded for stability)
-NBER_RECESSIONS = [
-    ('1960-04-01', '1961-02-01'),
-    ('1969-12-01', '1970-11-01'),
-    ('1973-11-01', '1975-03-01'),
-    ('1980-01-01', '1980-07-01'),
-    ('1981-07-01', '1982-11-01'),
-    ('1990-07-01', '1991-03-01'),
-    ('2001-03-01', '2001-11-01'),
-    ('2007-12-01', '2009-06-01'),
-    ('2020-02-01', '2020-04-01')
-]
-
-
-REGIME_COLORS = {
-    0: 'red',
-    1: 'green',
-    2: 'blue',
-    3: 'orange',
-    4: 'purple',
-    5: 'gold'
-}
 
 plots.set_style()
 
@@ -263,29 +240,17 @@ def calculate_fuzzy_probs(X, centroids_step1, crisis_label, final_labels):
 
     return final_probs
 
-def get_transition_matrix(seq, normalize_rows=True):
-    n = 6
-    mat = np.zeros((n, n))
-    for (i, j) in zip(seq, seq[1:]):
-        mat[i, j] += 1
-    if normalize_rows:
-        row_sums = mat.sum(axis=1)[:, np.newaxis]
-        mat = np.divide(mat, row_sums, where=row_sums!=0)
-    return mat
-
 # ==========================================
 # MAIN APP
 # ==========================================
 
-st.title("Macroeconomic Regime Detection System")
+# 1. UI: Header
+plots.render_header()
 
-# SIDEBAR
-st.sidebar.header("Configuration")
-# File uploaders removed as requested
-start_date = st.sidebar.text_input("Start Date", value=DEFAULT_START_DATE)
-end_date = st.sidebar.text_input("End Date", value=DEFAULT_END_DATE)
+# 2. UI: Sidebar & Config
+start_date, end_date = plots.render_sidebar(DEFAULT_START_DATE, DEFAULT_END_DATE)
 
-# Load Data
+# 3. Data Loading
 df_transformed, err = load_and_preprocess_data(None, default_path=LOCAL_FRED_MD_PATH, start_date=start_date, end_date=end_date)
 
 if err:
@@ -293,123 +258,27 @@ if err:
     st.info(f"Please ensure '{LOCAL_FRED_MD_PATH}' exists.")
     st.stop()
 
-st.sidebar.success(f"Data Loaded! Shape: {df_transformed.shape}")
+plots.show_data_success(df_transformed.shape)
 
-# Preprocess & PCA
+# 4. Processing
 X_scaled, X_pre = prepare_pca_data(df_transformed)
 pca_model, X_pca, cumsum, n_components = run_pca(X_scaled)
 
-st.sidebar.info(f"PCA: 95% variance explained by {n_components} components.")
+plots.show_pca_info(n_components)
 
-# Run Models
 final_labels, k_probs, gmm_labels_aligned, gmm_probs_aligned = run_clustering_models(X_pca)
 
-# TABS
-tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Analysis", "Transitions", "Diagnostics"])
-
-with tab1:
-    st.header("Regime Timeline & Probabilities")
-    st.plotly_chart(plots.plot_timeline_comparison(df_transformed.index, final_labels, gmm_labels_aligned, NBER_RECESSIONS, REGIME_COLORS), use_container_width=True)
-    st.plotly_chart(plots.plot_probabilities(df_transformed.index, k_probs, gmm_probs_aligned, NBER_RECESSIONS), use_container_width=True)
-
-with tab2:
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.subheader("Feature Heatmap")
-        
-        # Prepare Heatmap Data
-        heatmap_vars = ['RPI', 'UNRATE', 'UMCSENTx', 'FEDFUNDS', 'CPIAUCSL', 'S&P 500']
-        heatmap_data = pd.DataFrame(index=df_transformed.index)
-        heatmap_data['Regime'] = final_labels
-        
-        # Flexible lookup for heatmap cols
-        found_cols = []
-        for key in heatmap_vars:
-            matches = [c for c in df_transformed.columns if key in c]
-            if matches:
-                heatmap_data[key] = df_transformed[matches[0]]
-                found_cols.append(key)
-        
-        if len(found_cols) > 0:
-            regime_means = heatmap_data.groupby('Regime').mean().T
-            scaler_mm = MinMaxScaler()
-            regime_means_norm = pd.DataFrame(
-                scaler_mm.fit_transform(regime_means.T).T,
-                columns=regime_means.columns,
-                index=regime_means.index
-            )
-            st.pyplot(plots.plot_feature_heatmap(regime_means_norm))
-        else:
-            st.warning("Could not find sufficient variables for Heatmap.")
-            
-    with col2:
-        st.subheader("PCA Component Analysis")
-        st.plotly_chart(plots.plot_pca_scatter(X_pca, final_labels, REGIME_COLORS, dates=df_transformed.index), use_container_width=True)
-    
-    st.subheader("PCA Loadings")
-    # 1. Get PCA loadings
-    pca_loadings = pd.DataFrame(
-        pca_model.components_.T, 
-        index=X_pre.columns, 
-        columns=[f'PC{i+1}' for i in range(pca_model.n_components_)]
-    )
-
-    # Select only the first 5 principal components
-    pca_loadings_five_components = pca_loadings.iloc[:, :5]
-    
-    # Handle Appendix
-    df_descriptions = None
-    # Try local default
-    try:
-         df_descriptions = pd.read_csv(LOCAL_APPENDIX_PATH, encoding='latin1')
-    except FileNotFoundError:
-        pass
-            
-    if df_descriptions is not None and 'fred' in df_descriptions.columns and 'description' in df_descriptions.columns:
-        # Prepare df_descriptions for merging
-        df_descriptions_clean = df_descriptions[['fred', 'description']].copy()
-        df_descriptions_clean.rename(columns={'fred': 'variable_name'}, inplace=True)
-
-        # Merge PCA loadings with descriptions
-        pca_loadings_reset = pca_loadings_five_components.reset_index()
-        pca_loadings_reset.rename(columns={'index': 'variable_name'}, inplace=True)
-
-        combined_loadings = pd.merge(
-            pca_loadings_reset,
-            df_descriptions_clean,
-            on='variable_name',
-            how='left'
-        )
-        
-        # Reorder columns
-        combined_loadings = combined_loadings[['description', 'variable_name'] + [f'PC{i+1}' for i in range(5)]]
-        st.dataframe(combined_loadings)
-    else:
-        st.dataframe(pca_loadings_five_components)
-        if df_descriptions is None:
-            st.info(f"Ensure '{LOCAL_APPENDIX_PATH}' exists locally to see variable descriptions.")
-
-with tab3:
-    st.header("Transition Dynamics")
-    
-    trans_matrix_raw = get_transition_matrix(final_labels)
-    
-    mat_cond = trans_matrix_raw.copy()
-    np.fill_diagonal(mat_cond, 0)
-    row_sums_cond = mat_cond.sum(axis=1)[:, np.newaxis]
-    trans_matrix_cond = np.divide(mat_cond, row_sums_cond, where=row_sums_cond!=0)
-
-    st.pyplot(plots.plot_transition_matrices(trans_matrix_raw, trans_matrix_cond))
-    
-    st.subheader("Network Graph")
-    st.pyplot(plots.plot_network_graph(trans_matrix_cond, REGIME_COLORS))
-
-with tab4:
-    st.header("Model Diagnostics")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.pyplot(plots.plot_pca_variance(cumsum, n_components))
-    with col2:
-        st.pyplot(plots.plot_scree(pca_model))
-
+# 5. UI: Dashboard
+plots.render_dashboard(
+    df_transformed, 
+    final_labels, 
+    k_probs, 
+    gmm_labels_aligned, 
+    gmm_probs_aligned, 
+    X_pca, 
+    pca_model, 
+    cumsum, 
+    n_components, 
+    X_pre, 
+    LOCAL_APPENDIX_PATH
+)
