@@ -19,6 +19,7 @@ DEFAULT_START_DATE = '1959-12-01'
 DEFAULT_END_DATE = '2023-01-01'
 FRED_MD_URL = "https://files.stlouisfed.org/files/htdocs/fred-md/monthly/current.csv"
 LOCAL_FRED_MD_PATH = '2025-11-MD.csv' # Keep reference, but allow override
+LOCAL_APPENDIX_PATH = 'FRED-MD_updated_appendix.csv'
 
 # NBER Recession Dates (Hardcoded for stability)
 NBER_RECESSIONS = [
@@ -270,16 +271,16 @@ st.title("Macroeconomic Regime Detection System")
 
 # SIDEBAR
 st.sidebar.header("Configuration")
-uploaded_file = st.sidebar.file_uploader("Upload FRED-MD CSV", type=["csv"])
+# File uploaders removed as requested
 start_date = st.sidebar.text_input("Start Date", value=DEFAULT_START_DATE)
 end_date = st.sidebar.text_input("End Date", value=DEFAULT_END_DATE)
 
 # Load Data
-df_transformed, err = load_and_preprocess_data(uploaded_file, default_path=LOCAL_FRED_MD_PATH, start_date=start_date, end_date=end_date)
+df_transformed, err = load_and_preprocess_data(None, default_path=LOCAL_FRED_MD_PATH, start_date=start_date, end_date=end_date)
 
 if err:
     st.error(f"Failed to load data: {err}")
-    st.info("Plese upload the FRED-MD 'current.csv' file.")
+    st.info(f"Please ensure '{LOCAL_FRED_MD_PATH}' exists.")
     st.stop()
 
 st.sidebar.success(f"Data Loaded! Shape: {df_transformed.shape}")
@@ -331,6 +332,49 @@ with tab2:
         
     st.header("PCA Component Analysis")
     st.pyplot(plots.plot_pca_scatter(X_pca, final_labels))
+    
+    st.subheader("PCA Loadings")
+    # 1. Get PCA loadings
+    pca_loadings = pd.DataFrame(
+        pca_model.components_.T, 
+        index=X_pre.columns, 
+        columns=[f'PC{i+1}' for i in range(pca_model.n_components_)]
+    )
+
+    # Select only the first 5 principal components
+    pca_loadings_five_components = pca_loadings.iloc[:, :5]
+    
+    # Handle Appendix
+    df_descriptions = None
+    # Try local default
+    try:
+         df_descriptions = pd.read_csv(LOCAL_APPENDIX_PATH, encoding='latin1')
+    except FileNotFoundError:
+        pass
+            
+    if df_descriptions is not None and 'fred' in df_descriptions.columns and 'description' in df_descriptions.columns:
+        # Prepare df_descriptions for merging
+        df_descriptions_clean = df_descriptions[['fred', 'description']].copy()
+        df_descriptions_clean.rename(columns={'fred': 'variable_name'}, inplace=True)
+
+        # Merge PCA loadings with descriptions
+        pca_loadings_reset = pca_loadings_five_components.reset_index()
+        pca_loadings_reset.rename(columns={'index': 'variable_name'}, inplace=True)
+
+        combined_loadings = pd.merge(
+            pca_loadings_reset,
+            df_descriptions_clean,
+            on='variable_name',
+            how='left'
+        )
+        
+        # Reorder columns
+        combined_loadings = combined_loadings[['description', 'variable_name'] + [f'PC{i+1}' for i in range(5)]]
+        st.dataframe(combined_loadings)
+    else:
+        st.dataframe(pca_loadings_five_components)
+        if df_descriptions is None:
+            st.info(f"Ensure '{LOCAL_APPENDIX_PATH}' exists locally to see variable descriptions.")
 
 with tab3:
     st.header("Transition Dynamics")
