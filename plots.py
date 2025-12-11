@@ -53,19 +53,23 @@ def plot_recessions(ax, recession_dates):
             pass # Ignore validity errors for plotting if date ranges are weird
 
 
-def plot_timeline_comparison(dates, final_labels, gmm_labels_aligned, recession_dates):
+def plot_timeline_comparison(dates, final_labels, gmm_labels_aligned, recession_dates, regime_colors):
     """Figure 2: K-Means vs GMM Timeline."""
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
 
+    # Map labels to colors
+    k_colors = [regime_colors.get(l, 'gray') for l in final_labels]
+    g_colors = [regime_colors.get(l, 'gray') for l in gmm_labels_aligned]
+
     plot_recessions(ax1, recession_dates)
-    ax1.scatter(dates, final_labels, s=10, c='blue', alpha=0.6)
+    ax1.scatter(dates, final_labels, s=10, c=k_colors, alpha=0.6)
     ax1.set_title('Figure 2: K-Means Regimes (Top) vs GMM (Bottom)')
     ax1.set_ylabel('Regime (K-Means)')
     ax1.set_yticks(range(6))
     ax1.grid(True)
 
     plot_recessions(ax2, recession_dates)
-    ax2.scatter(dates, gmm_labels_aligned, s=10, c='green', alpha=0.6)
+    ax2.scatter(dates, gmm_labels_aligned, s=10, c=g_colors, alpha=0.6)
     ax2.set_ylabel('Regime (GMM)')
     ax2.set_yticks(range(6))
     ax2.set_xlabel('Date')
@@ -132,7 +136,7 @@ def plot_transition_matrices(trans_matrix_raw, trans_matrix_cond):
     return fig
 
 
-def plot_network_graph(trans_matrix_cond):
+def plot_network_graph(trans_matrix_cond, regime_colors):
     """Figure 6: Network Graph."""
     G = nx.DiGraph()
     labels_map = {
@@ -157,8 +161,11 @@ def plot_network_graph(trans_matrix_cond):
     fig, ax = plt.subplots(figsize=(10, 8))
     pos = nx.spring_layout(G, seed=42, k=2) # k regulates spacing
     weights = [G[u][v]['weight'] * 5 for u,v in G.edges()]
+    
+    # Node colors
+    node_colors = [regime_colors.get(i, 'lightblue') for i in range(6)]
 
-    nx.draw_networkx_nodes(G, pos, node_size=2000, node_color='lightblue', ax=ax)
+    nx.draw_networkx_nodes(G, pos, node_size=2000, node_color=node_colors, ax=ax)
     nx.draw_networkx_labels(G, pos, labels=labels_map, font_size=10, ax=ax)
     nx.draw_networkx_edges(G, pos, width=weights, arrowstyle='->', arrowsize=20, edge_color='gray', ax=ax)
 
@@ -167,21 +174,19 @@ def plot_network_graph(trans_matrix_cond):
     return fig
 
 
-def plot_pca_scatter(X_pca, labels):
+def plot_pca_scatter(X_pca, labels, regime_colors):
     """Scatter Plot PC1 vs PC2."""
-    colors = ['red', 'blue', 'green', 'purple', 'orange', 'brown']
-    unique_labels = np.unique(labels)
-    # Ensure we don't go out of bounds if labels > 6 (though we expect 6)
-    cmap_custom = ListedColormap(colors[:len(unique_labels)])
+    
+    # Map labels to colors for scatter
+    point_colors = [regime_colors.get(l, 'gray') for l in labels]
 
     fig, ax = plt.subplots(figsize=(12, 8))
-    scatter = ax.scatter(X_pca[:, 0], X_pca[:, 1], c=labels, cmap=cmap_custom, s=20, alpha=0.8)
+    scatter = ax.scatter(X_pca[:, 0], X_pca[:, 1], c=point_colors, s=20, alpha=0.8)
 
     legend_handles = []
-    # Create manual legend handles to ensure correct color mapping
-    for i, label_value in enumerate(sorted(unique_labels)):
-        color_idx = i if i < len(colors) else -1
-        color = colors[color_idx] if color_idx != -1 else 'black'
+    unique_labels = np.unique(labels)
+    for label_value in sorted(unique_labels):
+        color = regime_colors.get(label_value, 'black')
         legend_handles.append(plt.Line2D([0], [0], marker='o', color='w', label=f'Regime {label_value}',
                                          markerfacecolor=color, markersize=10))
 

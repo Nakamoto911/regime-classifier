@@ -34,6 +34,16 @@ NBER_RECESSIONS = [
     ('2020-02-01', '2020-04-01')
 ]
 
+
+REGIME_COLORS = {
+    0: 'red',
+    1: 'green',
+    2: 'blue',
+    3: 'orange',
+    4: 'purple',
+    5: 'gold'
+}
+
 plots.set_style()
 
 def apply_t_code(series, code):
@@ -299,39 +309,43 @@ tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Analysis", "Transitions", "Diagno
 
 with tab1:
     st.header("Regime Timeline & Probabilities")
-    st.pyplot(plots.plot_timeline_comparison(df_transformed.index, final_labels, gmm_labels_aligned, NBER_RECESSIONS))
+    st.pyplot(plots.plot_timeline_comparison(df_transformed.index, final_labels, gmm_labels_aligned, NBER_RECESSIONS, REGIME_COLORS))
     st.pyplot(plots.plot_probabilities(df_transformed.index, k_probs, gmm_probs_aligned, NBER_RECESSIONS))
 
 with tab2:
-    st.header("Feature Analysis")
-    
-    # Prepare Heatmap Data
-    heatmap_vars = ['RPI', 'UNRATE', 'UMCSENTx', 'FEDFUNDS', 'CPIAUCSL', 'S&P 500']
-    heatmap_data = pd.DataFrame(index=df_transformed.index)
-    heatmap_data['Regime'] = final_labels
-    
-    # Flexible lookup for heatmap cols
-    found_cols = []
-    for key in heatmap_vars:
-        matches = [c for c in df_transformed.columns if key in c]
-        if matches:
-            heatmap_data[key] = df_transformed[matches[0]]
-            found_cols.append(key)
-    
-    if len(found_cols) > 0:
-        regime_means = heatmap_data.groupby('Regime').mean().T
-        scaler_mm = MinMaxScaler()
-        regime_means_norm = pd.DataFrame(
-            scaler_mm.fit_transform(regime_means.T).T,
-            columns=regime_means.columns,
-            index=regime_means.index
-        )
-        st.pyplot(plots.plot_feature_heatmap(regime_means_norm))
-    else:
-        st.warning("Could not find sufficient variables for Heatmap.")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Feature Heatmap")
         
-    st.header("PCA Component Analysis")
-    st.pyplot(plots.plot_pca_scatter(X_pca, final_labels))
+        # Prepare Heatmap Data
+        heatmap_vars = ['RPI', 'UNRATE', 'UMCSENTx', 'FEDFUNDS', 'CPIAUCSL', 'S&P 500']
+        heatmap_data = pd.DataFrame(index=df_transformed.index)
+        heatmap_data['Regime'] = final_labels
+        
+        # Flexible lookup for heatmap cols
+        found_cols = []
+        for key in heatmap_vars:
+            matches = [c for c in df_transformed.columns if key in c]
+            if matches:
+                heatmap_data[key] = df_transformed[matches[0]]
+                found_cols.append(key)
+        
+        if len(found_cols) > 0:
+            regime_means = heatmap_data.groupby('Regime').mean().T
+            scaler_mm = MinMaxScaler()
+            regime_means_norm = pd.DataFrame(
+                scaler_mm.fit_transform(regime_means.T).T,
+                columns=regime_means.columns,
+                index=regime_means.index
+            )
+            st.pyplot(plots.plot_feature_heatmap(regime_means_norm))
+        else:
+            st.warning("Could not find sufficient variables for Heatmap.")
+            
+    with col2:
+        st.subheader("PCA Component Analysis")
+        st.pyplot(plots.plot_pca_scatter(X_pca, final_labels, REGIME_COLORS))
     
     st.subheader("PCA Loadings")
     # 1. Get PCA loadings
@@ -389,7 +403,7 @@ with tab3:
     st.pyplot(plots.plot_transition_matrices(trans_matrix_raw, trans_matrix_cond))
     
     st.subheader("Network Graph")
-    st.pyplot(plots.plot_network_graph(trans_matrix_cond))
+    st.pyplot(plots.plot_network_graph(trans_matrix_cond, REGIME_COLORS))
 
 with tab4:
     st.header("Model Diagnostics")
