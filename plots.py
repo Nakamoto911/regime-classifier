@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 import networkx as nx
 from matplotlib.colors import ListedColormap
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 def set_style():
@@ -54,59 +56,137 @@ def plot_recessions(ax, recession_dates):
 
 
 def plot_timeline_comparison(dates, final_labels, gmm_labels_aligned, recession_dates, regime_colors):
-    """Figure 2: K-Means vs GMM Timeline."""
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+    """Figure 2: K-Means vs GMM Timeline (Plotly)."""
+    
+    # Create subplots
+    fig = make_subplots(
+        rows=2, cols=1, 
+        shared_xaxes=True, 
+        subplot_titles=("K-Means Regimes", "GMM Regimes"),
+        vertical_spacing=0.1
+    )
 
-    # Map labels to colors
+    # Helper to add recession shapes
+    rect_shapes = []
+    for start, end in recession_dates:
+        rect_shapes.append(dict(
+            type="rect",
+            xref="x", yref="paper",
+            x0=start, x1=end,
+            y0=0, y1=1,
+            fillcolor="gray",
+            opacity=0.3,
+            layer="below",
+            line_width=0,
+        ))
+
+    # --- Top Plot: K-Means ---
+    # We assign colors per point. Plotly Scatter with mode='markers' allows list of colors.
+    # Convert labels to specific colors
     k_colors = [regime_colors.get(l, 'gray') for l in final_labels]
+    
+    fig.add_trace(
+        go.Scatter(
+            x=dates, 
+            y=final_labels,
+            mode='markers',
+            marker=dict(color=k_colors, size=6),
+            name='K-Means',
+            hovertemplate='Date: %{x}<br>Regime: %{y}<extra></extra>'
+        ),
+        row=1, col=1
+    )
+
+    # --- Bottom Plot: GMM ---
     g_colors = [regime_colors.get(l, 'gray') for l in gmm_labels_aligned]
+    
+    fig.add_trace(
+        go.Scatter(
+            x=dates, 
+            y=gmm_labels_aligned,
+            mode='markers',
+            marker=dict(color=g_colors, size=6),
+            name='GMM',
+            hovertemplate='Date: %{x}<br>Regime: %{y}<extra></extra>'
+        ),
+        row=2, col=1
+    )
 
-    plot_recessions(ax1, recession_dates)
-    ax1.scatter(dates, final_labels, s=10, c=k_colors, alpha=0.6)
-    ax1.set_title('Figure 2: K-Means Regimes (Top) vs GMM (Bottom)')
-    ax1.set_ylabel('Regime (K-Means)')
-    ax1.set_yticks(range(6))
-    ax1.grid(True)
+    # Layout Updates
+    fig.update_layout(
+        title_text="Figure 2: K-Means (Top) vs GMM (Bottom)",
+        height=600,
+        shapes=rect_shapes,
+        showlegend=False
+    )
+    
+    fig.update_yaxes(title_text="Regime", row=1, col=1, tickvals=list(range(6)))
+    fig.update_yaxes(title_text="Regime", row=2, col=1, tickvals=list(range(6)))
+    fig.update_xaxes(title_text="Date", row=2, col=1)
 
-    plot_recessions(ax2, recession_dates)
-    ax2.scatter(dates, gmm_labels_aligned, s=10, c=g_colors, alpha=0.6)
-    ax2.set_ylabel('Regime (GMM)')
-    ax2.set_yticks(range(6))
-    ax2.set_xlabel('Date')
-    ax2.grid(True)
-
-    plt.tight_layout()
     return fig
 
 
 def plot_probabilities(dates, k_probs, g_probs, recession_dates):
-    """Figure 3: Crisis Probability."""
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+    """Figure 3: Crisis Probability (Plotly)."""
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        subplot_titles=("K-Means Probability (Crisis vs Normal)", "GMM Probability (Crisis vs Normal)"),
+        vertical_spacing=0.1
+    )
 
-    # K-Means Probs
+    # Recession Shapes
+    rect_shapes = []
+    for start, end in recession_dates:
+        rect_shapes.append(dict(
+            type="rect",
+            xref="x", yref="paper",
+            x0=start, x1=end,
+            y0=0, y1=1,
+            fillcolor="gray",
+            opacity=0.3,
+            layer="below",
+            line_width=0,
+        ))
+
+    # --- K-Means Traces ---
     k_crisis_prob = k_probs[:, 0]
     k_normal_prob = np.sum(k_probs[:, 1:], axis=1)
 
-    plot_recessions(ax1, recession_dates)
-    ax1.plot(dates, k_crisis_prob, label='P(Crisis)', color='red', linewidth=1)
-    ax1.plot(dates, k_normal_prob, label='P(Normal)', color='blue', linewidth=0.5, alpha=0.5)
-    ax1.set_title('Figure 3: Crisis Probability (K-Means vs GMM)')
-    ax1.set_ylabel('Prob (K-Means)')
-    ax1.legend(loc='upper left')
-    ax1.grid(True)
+    fig.add_trace(
+        go.Scatter(x=dates, y=k_crisis_prob, mode='lines', line=dict(color='red', width=2), name='K-Means Crisis'),
+        row=1, col=1
+    )
+    fig.add_trace(
+        go.Scatter(x=dates, y=k_normal_prob, mode='lines', line=dict(color='blue', width=1), name='K-Means Normal'),
+        row=1, col=1
+    )
 
-    # GMM Probs
+    # --- GMM Traces ---
     g_crisis_prob = g_probs[:, 0]
     g_normal_prob = np.sum(g_probs[:, 1:], axis=1)
 
-    plot_recessions(ax2, recession_dates)
-    ax2.plot(dates, g_crisis_prob, label='P(Crisis)', color='red', linewidth=1)
-    ax2.plot(dates, g_normal_prob, label='P(Normal)', color='green', linewidth=0.5, alpha=0.5)
-    ax2.set_ylabel('Prob (GMM)')
-    ax2.set_xlabel('Date')
-    ax2.grid(True)
+    fig.add_trace(
+        go.Scatter(x=dates, y=g_crisis_prob, mode='lines', line=dict(color='red', width=2), name='GMM Crisis'),
+        row=2, col=1
+    )
+    fig.add_trace(
+        go.Scatter(x=dates, y=g_normal_prob, mode='lines', line=dict(color='green', width=1), name='GMM Normal'),
+        row=2, col=1
+    )
 
-    plt.tight_layout()
+    fig.update_layout(
+        title_text="Figure 3: Crisis Probability Overview",
+        height=600,
+        shapes=rect_shapes,
+        showlegend=True
+    )
+    
+    fig.update_yaxes(title_text="Probability", range=[-0.05, 1.05], row=1, col=1)
+    fig.update_yaxes(title_text="Probability", range=[-0.05, 1.05], row=2, col=1)
+    fig.update_xaxes(title_text="Date", row=2, col=1)
+
     return fig
 
 
@@ -174,26 +254,46 @@ def plot_network_graph(trans_matrix_cond, regime_colors):
     return fig
 
 
-def plot_pca_scatter(X_pca, labels, regime_colors):
-    """Scatter Plot PC1 vs PC2."""
+def plot_pca_scatter(X_pca, labels, regime_colors, dates=None):
+    """Scatter Plot PC1 vs PC2 (Plotly)."""
+
+    fig = go.Figure()
+
+    unique_labels = sorted(np.unique(labels))
     
-    # Map labels to colors for scatter
-    point_colors = [regime_colors.get(l, 'gray') for l in labels]
+    for label_value in unique_labels:
+        mask = labels == label_value
+        x_pts = X_pca[mask, 0]
+        y_pts = X_pca[mask, 1]
+        
+        # If dates are provided, slice them
+        hover_text = []
+        if dates is not None:
+             # Ensure dates is aligned with X_pca
+             # X_pca usually matches df_transformed, same as dates
+             dates_masked = dates[mask]
+             hover_text = [f"Date: {d.strftime('%Y-%m-%d')}<br>Regime: {label_value}" for d in dates_masked]
+        else:
+             hover_text = [f"Regime: {label_value}" for _ in range(len(x_pts))]
 
-    fig, ax = plt.subplots(figsize=(12, 8))
-    scatter = ax.scatter(X_pca[:, 0], X_pca[:, 1], c=point_colors, s=20, alpha=0.8)
-
-    legend_handles = []
-    unique_labels = np.unique(labels)
-    for label_value in sorted(unique_labels):
         color = regime_colors.get(label_value, 'black')
-        legend_handles.append(plt.Line2D([0], [0], marker='o', color='w', label=f'Regime {label_value}',
-                                         markerfacecolor=color, markersize=10))
+        
+        fig.add_trace(go.Scatter(
+            x=x_pts,
+            y=y_pts,
+            mode='markers',
+            name=f'Regime {label_value}',
+            marker=dict(color=color, size=8, opacity=0.8),
+            text=hover_text,
+            hoverinfo='text'
+        ))
 
-    ax.legend(handles=legend_handles, title='Macro Regimes', bbox_to_anchor=(1.05, 1), loc='upper left')
-    ax.set_title('Scatter Plot of PC1 vs PC2, Colored by Macroeconomic Regime')
-    ax.set_xlabel('Principal Component 1')
-    ax.set_ylabel('Principal Component 2')
-    ax.grid(True)
-    plt.tight_layout()
+    fig.update_layout(
+        title="Scatter Plot of PC1 vs PC2",
+        xaxis_title="Principal Component 1",
+        yaxis_title="Principal Component 2",
+        height=600,
+        showlegend=True
+    )
+
     return fig

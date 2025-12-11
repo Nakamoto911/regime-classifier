@@ -309,8 +309,8 @@ tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Analysis", "Transitions", "Diagno
 
 with tab1:
     st.header("Regime Timeline & Probabilities")
-    st.pyplot(plots.plot_timeline_comparison(df_transformed.index, final_labels, gmm_labels_aligned, NBER_RECESSIONS, REGIME_COLORS))
-    st.pyplot(plots.plot_probabilities(df_transformed.index, k_probs, gmm_probs_aligned, NBER_RECESSIONS))
+    st.plotly_chart(plots.plot_timeline_comparison(df_transformed.index, final_labels, gmm_labels_aligned, NBER_RECESSIONS, REGIME_COLORS), use_container_width=True)
+    st.plotly_chart(plots.plot_probabilities(df_transformed.index, k_probs, gmm_probs_aligned, NBER_RECESSIONS), use_container_width=True)
 
 with tab2:
     col1, col2 = st.columns(2)
@@ -345,7 +345,7 @@ with tab2:
             
     with col2:
         st.subheader("PCA Component Analysis")
-        st.pyplot(plots.plot_pca_scatter(X_pca, final_labels, REGIME_COLORS))
+        st.plotly_chart(plots.plot_pca_scatter(X_pca, final_labels, REGIME_COLORS, dates=df_transformed.index), use_container_width=True)
     
     st.subheader("PCA Loadings")
     # 1. Get PCA loadings
