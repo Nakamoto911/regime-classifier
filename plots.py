@@ -152,6 +152,16 @@ def render_dashboard(df_transformed, final_labels, k_probs, gmm_labels_aligned, 
             use_container_width=True
         )
 
+        st.subheader("Top Weighted Variables per PC")
+        # 2. Get Top Weighted Variables Table
+        # Create a map for descriptions
+        desc_map = {}
+        if df_descriptions is not None and 'fred' in df_descriptions.columns and 'description' in df_descriptions.columns:
+             desc_map = dict(zip(df_descriptions['fred'], df_descriptions['description']))
+        
+        pca_weights_df = get_pca_top_weights_df(pca_model.components_, X_pre.columns, desc_map)
+        st.table(pca_weights_df)
+
     with tab3:
         st.header("Transition Dynamics")
         
@@ -534,3 +544,40 @@ def plot_pca_components_timeline(X_pca, dates, n_components=5, recession_dates=N
     fig.update_xaxes(title_text="Date", row=actual_components, col=1)
 
     return fig
+
+def get_pca_top_weights_df(components, feature_names, descriptions_map=None, n_pcs=5, top_k=7):
+    """
+    Creates a DataFrame of the top k weighted variables for the first n PCs.
+    Display format: "(+) Variable Description" or "(-) Variable Description"
+    """
+    if descriptions_map is None:
+        descriptions_map = {}
+
+    data = {}
+    
+    # Iterate through PCs
+    for i in range(min(n_pcs, len(components))):
+        pc_loadings = components[i] # Shape (n_features,)
+        
+        # Get indices of top k absolute weights
+        # We use argsort of abs values, take last k, and reverse to get descending
+        top_indices = np.argsort(np.abs(pc_loadings))[-top_k:][::-1]
+        
+        column_entries = []
+        for idx in top_indices:
+            weight = pc_loadings[idx]
+            feature_code = feature_names[idx]
+            
+            # Determine sign icon
+            sign_icon = "(+)" if weight >= 0 else "(-)"
+            
+            # Get description
+            desc = descriptions_map.get(feature_code, feature_code)
+            
+            # Format entry
+            entry = f"{sign_icon} {desc}"
+            column_entries.append(entry)
+            
+        data[f"PC{i+1}"] = column_entries
+
+    return pd.DataFrame(data)
