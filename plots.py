@@ -13,6 +13,9 @@ from plotly.subplots import make_subplots
 # ==========================================
 # CONSTANTS
 # ==========================================
+# ==========================================
+# CONSTANTS
+# ==========================================
 NBER_RECESSIONS = [
     ('1960-04-01', '1961-02-01'),
     ('1969-12-01', '1970-11-01'),
@@ -34,10 +37,53 @@ REGIME_COLORS = {
     5: 'gold'
 }
 
+# Default Naming Configuration
+DEFAULT_REGIMES = [
+    {"Regime": 0, "Name": "Deep Recession / Crisis", "Description": "A collapse in real economic activity and leading indicators, signaling a severe economic crisis (e.g., 2008 or 2020)."},
+    {"Regime": 1, "Name": "Inflationary Overheating", "Description": "Characterized by extremely high inflation accompanied by positive economic growth."},
+    {"Regime": 2, "Name": "Economic Slowdown", "Description": "A period of weak real activity and weak leading indicators, likely a mild recession or a broad contraction."},
+    {"Regime": 3, "Name": "Deflation", "Description": "Defined primarily by a massive drop in price indices (deflation), with neutral real activity."},
+    {"Regime": 4, "Name": "Strong Expansion", "Description": "The \"Goldilocks\" phase: booming real activity and strong leading indicators, with stable low inflation."},
+    {"Regime": 5, "Name": "Early Recovery", "Description": "A unique phase where current activity (PC1) is still weak/negative, but leading indicators like housing (PC3) have turned strongly positive, signaling the start of a recovery."}
+]
+
+DEFAULT_PCS = [
+    {
+        "PC": "PC1", 
+        "Name": "Real Economic Activity (Coincident)", 
+        "Drivers": "Strongly positive loadings on Employment (Total Nonfarm, Manufacturing), Industrial Production, and Capacity Utilization. Strongly negative on Unemployment Rate.", 
+        "Interpretation": "This component tracks the current health of the real economy. High values indicate a booming economy, while low values indicate recession."
+    },
+    {
+        "PC": "PC2", 
+        "Name": "Inflation", 
+        "Drivers": "Strongly positive loadings on almost all price indices, including CPI (Transportation, Commodities, All Items) and PPI (Finished Goods, Intermediate Materials).", 
+        "Interpretation": "This component represents the inflation cycle. High values indicate high inflation, while very low negative values indicate deflation."
+    },
+    {
+        "PC": "PC3", 
+        "Name": "Leading Indicators (Housing & Credit)", 
+        "Drivers": "Positive loadings on Housing Starts and Building Permits (classic leading indicators), M2 Money Stock, and Commercial Paper Rates. Negative loadings on unemployment duration and consumer loans.", 
+        "Interpretation": "This component captures leading economic signals, particularly in the housing and credit markets. A positive value often signals future growth (or a recovery phase), while a negative value signals a contraction in forward-looking sectors."
+    }
+]
+
 def set_style():
     """Sets the plotting style."""
     plt.style.use('seaborn-v0_8-darkgrid')
     sns.set_context("talk")
+
+def initialize_naming_state():
+    """Initializes session state for Regime and PC naming if not present."""
+    if 'regime_df' not in st.session_state:
+        st.session_state['regime_df'] = pd.DataFrame(DEFAULT_REGIMES)
+    else:
+        # Maintenance: Remove 'Key Characteristics' if it exists from previous state
+        if 'Key Characteristics' in st.session_state['regime_df'].columns:
+             st.session_state['regime_df'] = st.session_state['regime_df'].drop(columns=['Key Characteristics'])
+    
+    if 'pc_df' not in st.session_state:
+        st.session_state['pc_df'] = pd.DataFrame(DEFAULT_PCS)
 
 # ==========================================
 # UI COMPONENTS
@@ -61,7 +107,10 @@ def show_pca_info(n_components):
 def render_dashboard(df_transformed, final_labels, k_probs, gmm_labels_aligned, gmm_probs_aligned, 
                     X_pca, pca_model, cumsum, n_components, X_pre, local_appendix_path):
     
-    tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Analysis", "Transitions", "Diagnostics"])
+    # Initialize naming state
+    initialize_naming_state()
+
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Overview", "Analysis", "Transitions", "Diagnostics", "Naming"])
 
     with tab1:
         st.header("Regime Timeline & Probabilities")
@@ -162,6 +211,8 @@ def render_dashboard(df_transformed, final_labels, k_probs, gmm_labels_aligned, 
         pca_weights_df = get_pca_top_weights_df(pca_model.components_, X_pre.columns, desc_map)
         st.table(pca_weights_df)
 
+
+
         st.subheader("Regime Centroids (Average PC Values)")
         # 3. Calculate and Display Centroids
         # DataFrame for calculation
@@ -175,14 +226,6 @@ def render_dashboard(df_transformed, final_labels, k_probs, gmm_labels_aligned, 
 
     with tab3:
         st.header("Transition Dynamics")
-        
-        # We need get_transition_matrix here or pass it?
-        # Typically it's a data transformation. I can move the function here or keep it in app.py and pass the result.
-        # The prompt said "app.py contains mostly the algorithms". get_transition_matrix is a simple algo.
-        # I'll calculate it on the fly here or import it. Or better, move the helper function here since it's used for plotting.
-        # Actually, let's just define the helper in plots or keep it in app and pass the matrix.
-        # To keep app.py clean, passing the matrix is better if it was pre-calc, but it's calculated only for the plot.
-        # I'll add the helper function to plots.py
         
         trans_matrix_raw = get_transition_matrix(final_labels)
         
@@ -203,6 +246,26 @@ def render_dashboard(df_transformed, final_labels, k_probs, gmm_labels_aligned, 
             st.pyplot(plot_pca_variance(cumsum, n_components))
         with col2:
             st.pyplot(plot_scree(pca_model))
+
+    with tab5:
+        st.header("Regime & PC Naming Configuration")
+        st.markdown("Edit the names and descriptions below. These changes will update the charts and legends.")
+        
+        st.subheader("Regime Definitions")
+        st.session_state['regime_df'] = st.data_editor(
+            st.session_state['regime_df'], 
+            num_rows="fixed",
+            hide_index=True,
+            use_container_width=True
+        )
+        
+        st.subheader("PC Definitions")
+        st.session_state['pc_df'] = st.data_editor(
+            st.session_state['pc_df'],
+            num_rows="fixed",
+            hide_index=True,
+            use_container_width=True
+        )
 
 def get_transition_matrix(seq, normalize_rows=True):
     n = 6
@@ -261,6 +324,17 @@ def plot_recessions(ax, recession_dates):
 def plot_timeline_comparison(dates, final_labels, gmm_labels_aligned, recession_dates, regime_colors):
     """Figure 2: K-Means vs GMM Timeline (Plotly)."""
     
+    # Get dynamic names
+    regime_names = {}
+    if 'regime_df' in st.session_state:
+        regime_df = st.session_state['regime_df']
+        for _, row in regime_df.iterrows():
+            regime_names[row['Regime']] = row['Name']
+
+    # Helper to get name
+    def get_regime_name(r):
+        return regime_names.get(r, f"Regime {r}")
+
     # Create subplots
     fig = make_subplots(
         rows=2, cols=1, 
@@ -288,6 +362,7 @@ def plot_timeline_comparison(dates, final_labels, gmm_labels_aligned, recession_
     # We assign colors per point. Plotly Scatter with mode='markers' allows list of colors.
     # Convert labels to specific colors
     k_colors = [regime_colors.get(l, 'gray') for l in final_labels]
+    k_hover_text = [f"Date: {d.strftime('%Y-%m-%d')}<br>Regime: {l} ({get_regime_name(l)})<extra></extra>" for d, l in zip(dates, final_labels)]
     
     fig.add_trace(
         go.Scatter(
@@ -296,13 +371,15 @@ def plot_timeline_comparison(dates, final_labels, gmm_labels_aligned, recession_
             mode='markers',
             marker=dict(color=k_colors, size=6, opacity=0.8),
             name='K-Means',
-            hovertemplate='Date: %{x}<br>Regime: %{y}<extra></extra>'
+            text=k_hover_text,
+            hoverinfo='text'
         ),
         row=1, col=1
     )
 
     # --- Bottom Plot: GMM ---
     g_colors = [regime_colors.get(l, 'gray') for l in gmm_labels_aligned]
+    g_hover_text = [f"Date: {d.strftime('%Y-%m-%d')}<br>Regime: {l} ({get_regime_name(l)})<extra></extra>" for d, l in zip(dates, gmm_labels_aligned)]
     
     fig.add_trace(
         go.Scatter(
@@ -311,7 +388,8 @@ def plot_timeline_comparison(dates, final_labels, gmm_labels_aligned, recession_
             mode='markers',
             marker=dict(color=g_colors, size=6, opacity=0.8),
             name='GMM',
-            hovertemplate='Date: %{x}<br>Regime: %{y}<extra></extra>'
+            text=g_hover_text,
+            hoverinfo='text'
         ),
         row=2, col=1
     )
@@ -324,8 +402,12 @@ def plot_timeline_comparison(dates, final_labels, gmm_labels_aligned, recession_
         showlegend=False
     )
     
-    fig.update_yaxes(title_text="Regime", row=1, col=1, tickvals=list(range(6)))
-    fig.update_yaxes(title_text="Regime", row=2, col=1, tickvals=list(range(6)))
+    # Generate tick labels
+    tick_vals = list(range(6))
+    tick_text = [f"{i}: {get_regime_name(i)}" for i in tick_vals]
+
+    fig.update_yaxes(title_text="Regime", row=1, col=1, tickvals=tick_vals, ticktext=tick_text)
+    fig.update_yaxes(title_text="Regime", row=2, col=1, tickvals=tick_vals, ticktext=tick_text)
     fig.update_xaxes(title_text="Date", row=2, col=1)
 
     return fig
@@ -424,17 +506,26 @@ def plot_transition_matrices(trans_matrix_raw, trans_matrix_cond):
 def plot_network_graph(trans_matrix_cond, regime_colors):
     """Figure 6: Network Graph."""
     G = nx.DiGraph()
-    labels_map = {
-        0: "0: Crisis",
-        1: "1: Recovery",
-        2: "2: Growth",
-        3: "3: Stagflation",
-        4: "4: Pre-Recession",
-        5: "5: Boom"
-    }
+    
+    # Get dynamic labels from session state
+    if 'regime_df' in st.session_state:
+        regime_df = st.session_state['regime_df']
+        labels_map = {row['Regime']: f"{row['Regime']}: {row['Name']}" for _, row in regime_df.iterrows()}
+    else:
+        # Fallback defaults
+        labels_map = {
+            0: "0: Crisis",
+            1: "1: Recovery",
+            2: "2: Growth",
+            3: "3: Stagflation",
+            4: "4: Pre-Recession",
+            5: "5: Boom"
+        }
 
     for i in range(6):
-        G.add_node(i, label=labels_map[i])
+        # Use fallback if key missing in dynamic map (safety)
+        label_text = labels_map.get(i, f"Regime {i}")
+        G.add_node(i, label=label_text)
 
     # Add edges
     for i in range(6):
@@ -466,20 +557,28 @@ def plot_pca_scatter(X_pca, labels, regime_colors, dates=None):
 
     unique_labels = sorted(np.unique(labels))
     
+    # Get dynamic names
+    regime_names = {}
+    if 'regime_df' in st.session_state:
+        regime_df = st.session_state['regime_df']
+        for _, row in regime_df.iterrows():
+            regime_names[row['Regime']] = row['Name']
+    
     for label_value in unique_labels:
         mask = labels == label_value
         x_pts = X_pca[mask, 0]
         y_pts = X_pca[mask, 1]
         
+        name_str = regime_names.get(label_value, f"Regime {label_value}")
+        
         # If dates are provided, slice them
         hover_text = []
         if dates is not None:
              # Ensure dates is aligned with X_pca
-             # X_pca usually matches df_transformed, same as dates
              dates_masked = dates[mask]
-             hover_text = [f"Date: {d.strftime('%Y-%m-%d')}<br>Regime: {label_value}<br>PC1: {x:.3f}<br>PC2: {y:.3f}" for d, x, y in zip(dates_masked, x_pts, y_pts)]
+             hover_text = [f"Date: {d.strftime('%Y-%m-%d')}<br>{name_str} (R{label_value})<br>PC1: {x:.3f}<br>PC2: {y:.3f}" for d, x, y in zip(dates_masked, x_pts, y_pts)]
         else:
-             hover_text = [f"Regime: {label_value}<br>PC1: {x:.3f}<br>PC2: {y:.3f}" for x, y in zip(x_pts, y_pts)]
+             hover_text = [f"{name_str} (R{label_value})<br>PC1: {x:.3f}<br>PC2: {y:.3f}" for x, y in zip(x_pts, y_pts)]
 
         color = regime_colors.get(label_value, 'black')
         
@@ -487,7 +586,7 @@ def plot_pca_scatter(X_pca, labels, regime_colors, dates=None):
             x=x_pts,
             y=y_pts,
             mode='markers',
-            name=f'Regime {label_value}',
+            name=f"{label_value}: {name_str}",
             marker=dict(color=color, size=8, opacity=0.8),
             text=hover_text,
             hoverinfo='text'
