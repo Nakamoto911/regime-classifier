@@ -146,6 +146,12 @@ def render_dashboard(df_transformed, final_labels, k_probs, gmm_labels_aligned, 
             if df_descriptions is None:
                 st.info(f"Ensure '{local_appendix_path}' exists locally to see variable descriptions.")
 
+        st.subheader("PCA Components Timeline")
+        st.plotly_chart(
+            plot_pca_components_timeline(X_pca, df_transformed.index, n_components=5, recession_dates=NBER_RECESSIONS), 
+            use_container_width=True
+        )
+
     with tab3:
         st.header("Transition Dynamics")
         
@@ -267,7 +273,7 @@ def plot_timeline_comparison(dates, final_labels, gmm_labels_aligned, recession_
             x=dates, 
             y=final_labels,
             mode='markers',
-            marker=dict(color=k_colors, size=6),
+            marker=dict(color=k_colors, size=6, opacity=0.8),
             name='K-Means',
             hovertemplate='Date: %{x}<br>Regime: %{y}<extra></extra>'
         ),
@@ -282,7 +288,7 @@ def plot_timeline_comparison(dates, final_labels, gmm_labels_aligned, recession_
             x=dates, 
             y=gmm_labels_aligned,
             mode='markers',
-            marker=dict(color=g_colors, size=6),
+            marker=dict(color=g_colors, size=6, opacity=0.8),
             name='GMM',
             hovertemplate='Date: %{x}<br>Regime: %{y}<extra></extra>'
         ),
@@ -450,9 +456,9 @@ def plot_pca_scatter(X_pca, labels, regime_colors, dates=None):
              # Ensure dates is aligned with X_pca
              # X_pca usually matches df_transformed, same as dates
              dates_masked = dates[mask]
-             hover_text = [f"Date: {d.strftime('%Y-%m-%d')}<br>Regime: {label_value}" for d in dates_masked]
+             hover_text = [f"Date: {d.strftime('%Y-%m-%d')}<br>Regime: {label_value}<br>PC1: {x:.3f}<br>PC2: {y:.3f}" for d, x, y in zip(dates_masked, x_pts, y_pts)]
         else:
-             hover_text = [f"Regime: {label_value}" for _ in range(len(x_pts))]
+             hover_text = [f"Regime: {label_value}<br>PC1: {x:.3f}<br>PC2: {y:.3f}" for x, y in zip(x_pts, y_pts)]
 
         color = regime_colors.get(label_value, 'black')
         
@@ -473,5 +479,58 @@ def plot_pca_scatter(X_pca, labels, regime_colors, dates=None):
         height=600,
         showlegend=True
     )
+
+    fig.update_xaxes(zeroline=True, zerolinewidth=1, zerolinecolor='gray')
+    fig.update_yaxes(zeroline=True, zerolinewidth=1, zerolinecolor='gray')
+
+    return fig
+
+
+def plot_pca_components_timeline(X_pca, dates, n_components=5, recession_dates=None):
+    """Plots the timeline of the first n principal components."""
+    
+    # Limit components if X_pca has fewer
+    actual_components = min(n_components, X_pca.shape[1])
+    
+    fig = make_subplots(
+        rows=actual_components, cols=1,
+        shared_xaxes=True,
+        subplot_titles=[f"Principal Component {i+1}" for i in range(actual_components)],
+        vertical_spacing=0.05
+    )
+
+    for i in range(actual_components):
+        # 1. Add Trace
+        fig.add_trace(
+            go.Scatter(
+                x=dates,
+                y=X_pca[:, i],
+                mode='lines',
+                name=f'PC{i+1}',
+                line=dict(width=1.5)
+            ),
+            row=i+1, col=1
+        )
+        
+        # 2. Add Zero Line
+        fig.add_hline(y=0, line_dash="dash", line_color="black", line_width=1, row=i+1, col=1)
+
+        # 3. Add Recessions (using add_vrect for robustness on each subplot)
+        if recession_dates:
+            for start, end in recession_dates:
+                fig.add_vrect(
+                    x0=start, x1=end,
+                    fillcolor="gray", opacity=0.3,
+                    layer="below", line_width=0,
+                    row=i+1, col=1
+                )
+
+    fig.update_layout(
+        title_text=f"First {actual_components} Principal Components over Time",
+        height=200 * actual_components,
+        showlegend=False
+    )
+    
+    fig.update_xaxes(title_text="Date", row=actual_components, col=1)
 
     return fig
