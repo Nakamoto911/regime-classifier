@@ -162,6 +162,17 @@ def render_dashboard(df_transformed, final_labels, k_probs, gmm_labels_aligned, 
         pca_weights_df = get_pca_top_weights_df(pca_model.components_, X_pre.columns, desc_map)
         st.table(pca_weights_df)
 
+        st.subheader("Regime Centroids (Average PC Values)")
+        # 3. Calculate and Display Centroids
+        # DataFrame for calculation
+        df_pca_vals = pd.DataFrame(X_pca, columns=[f"PC{i+1}" for i in range(X_pca.shape[1])])
+        df_pca_vals['Regime'] = final_labels
+        
+        # Group by Regime and calculate mean
+        centroids_df = df_pca_vals.groupby('Regime').mean()
+        st.dataframe(centroids_df)
+
+
     with tab3:
         st.header("Transition Dynamics")
         
