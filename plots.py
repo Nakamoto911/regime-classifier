@@ -451,11 +451,11 @@ def plot_probabilities(dates, k_probs, g_probs, recession_dates):
     k_normal_prob = np.sum(k_probs[:, 1:], axis=1)
 
     fig.add_trace(
-        go.Scatter(x=dates, y=k_crisis_prob, mode='lines', line=dict(color='red', width=2), name='K-Means Crisis'),
+        go.Scatter(x=dates, y=k_crisis_prob, mode='markers', marker=dict(color='red', size=4), name='K-Means Crisis'),
         row=1, col=1
     )
     fig.add_trace(
-        go.Scatter(x=dates, y=k_normal_prob, mode='lines', line=dict(color='blue', width=1), name='K-Means Normal'),
+        go.Scatter(x=dates, y=k_normal_prob, mode='markers', marker=dict(color='blue', size=2), name='K-Means Normal'),
         row=1, col=1
     )
 
@@ -464,11 +464,11 @@ def plot_probabilities(dates, k_probs, g_probs, recession_dates):
     g_normal_prob = np.sum(g_probs[:, 1:], axis=1)
 
     fig.add_trace(
-        go.Scatter(x=dates, y=g_crisis_prob, mode='lines', line=dict(color='red', width=2), name='GMM Crisis'),
+        go.Scatter(x=dates, y=g_crisis_prob, mode='markers', marker=dict(color='red', size=4), name='GMM Crisis'),
         row=2, col=1
     )
     fig.add_trace(
-        go.Scatter(x=dates, y=g_normal_prob, mode='lines', line=dict(color='green', width=1), name='GMM Normal'),
+        go.Scatter(x=dates, y=g_normal_prob, mode='markers', marker=dict(color='green', size=2), name='GMM Normal'),
         row=2, col=1
     )
 
