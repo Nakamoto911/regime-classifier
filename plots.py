@@ -114,8 +114,8 @@ def render_dashboard(df_transformed, final_labels, k_probs, gmm_labels_aligned, 
 
     with tab1:
         st.header("Regime Timeline & Probabilities")
-        st.plotly_chart(plot_timeline_comparison(df_transformed.index, final_labels, gmm_labels_aligned, NBER_RECESSIONS, REGIME_COLORS), use_container_width=True)
-        st.plotly_chart(plot_probabilities(df_transformed.index, k_probs, gmm_probs_aligned, NBER_RECESSIONS), use_container_width=True)
+        st.plotly_chart(plot_timeline_comparison(df_transformed.index, final_labels, gmm_labels_aligned, NBER_RECESSIONS, REGIME_COLORS), width="stretch")
+        st.plotly_chart(plot_probabilities(df_transformed.index, k_probs, gmm_probs_aligned, NBER_RECESSIONS), width="stretch")
 
     with tab2:
         col1, col2 = st.columns(2)
@@ -150,7 +150,7 @@ def render_dashboard(df_transformed, final_labels, k_probs, gmm_labels_aligned, 
                 
         with col2:
             st.subheader("PCA Component Analysis")
-            st.plotly_chart(plot_pca_scatter(X_pca, final_labels, REGIME_COLORS, dates=df_transformed.index), use_container_width=True)
+            st.plotly_chart(plot_pca_scatter(X_pca, final_labels, REGIME_COLORS, dates=df_transformed.index), width="stretch")
         
         st.subheader("PCA Loadings")
         # 1. Get PCA loadings
@@ -198,7 +198,7 @@ def render_dashboard(df_transformed, final_labels, k_probs, gmm_labels_aligned, 
         st.subheader("PCA Components Timeline")
         st.plotly_chart(
             plot_pca_components_timeline(X_pca, df_transformed.index, n_components=5, recession_dates=NBER_RECESSIONS), 
-            use_container_width=True
+            width="stretch"
         )
 
         st.subheader("Top Weighted Variables per PC")
@@ -256,7 +256,7 @@ def render_dashboard(df_transformed, final_labels, k_probs, gmm_labels_aligned, 
             st.session_state['regime_df'], 
             num_rows="fixed",
             hide_index=True,
-            use_container_width=True
+            width="stretch"
         )
         
         st.subheader("PC Definitions")
@@ -264,7 +264,7 @@ def render_dashboard(df_transformed, final_labels, k_probs, gmm_labels_aligned, 
             st.session_state['pc_df'],
             num_rows="fixed",
             hide_index=True,
-            use_container_width=True
+            width="stretch"
         )
 
 def get_transition_matrix(seq, normalize_rows=True):
