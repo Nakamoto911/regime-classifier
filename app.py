@@ -74,7 +74,7 @@ def load_and_preprocess_data(uploaded_file=None, default_path=None, start_date=D
     # Filter Dates
     df_data = df_data.loc[str(start_date):str(end_date)]
 
-    # Apply Transformations
+    # Apply t_codes Transformations
     transformed_series = []
     for col in df_data.columns:
         if col in t_codes:
@@ -103,7 +103,7 @@ def prepare_pca_data(df_transformed):
     pca_cols = [c for c in df_transformed.columns if not any(x in c for x in exclude_keywords)]
     X_pre = df_transformed[pca_cols].copy()
     
-    # Standardization (Demean + Unit Variance)
+    # Scaling data using a method robust to outliers (based on Median and IQR)
     scaler = RobustScaler()
     X_scaled = scaler.fit_transform(X_pre)
     
