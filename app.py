@@ -156,8 +156,9 @@ def run_clustering_models(X_pca, n_init=10):
     final_labels[labels_step1 == crisis_label] = 0
     final_labels[normal_indices] = labels_normal_sub + 1
 
-    # Probabilistic Fuzzy Logic
-    kmeans_probs = calculate_fuzzy_probs(X_pca, kmeans_step1.cluster_centers_, crisis_label, final_labels)
+# Probabilistic Fuzzy Logic
+    # Pass both models to combine distributions strictly as per the paper
+    kmeans_probs = calculate_fuzzy_probs(X_pca, kmeans_step1, kmeans_step2, crisis_label)
 
     # --- 4.2 Benchmark GMM ---
     gmm = GaussianMixture(n_components=6, random_state=42)
@@ -183,61 +184,63 @@ def run_clustering_models(X_pca, n_init=10):
 
     return final_labels, kmeans_probs, gmm_labels_aligned, gmm_probs_aligned
 
-def calculate_fuzzy_probs(X, centroids_step1, crisis_label, final_labels):
-    """Calculates fuzzy probabilities based on distance to conceptual centroids."""
-    # Reconstruct centroids in original PCA space
-    # Crisis Centroid from Step 1
-    c0 = centroids_step1[crisis_label]
+def calculate_fuzzy_probs(X, kmeans_step1, kmeans_step2, crisis_label):
+    """
+    Calculates fuzzy probabilities by combining distributions from two separate 
+    clustering runs (L2 and Cosine) as described in Section 3.2.
+    """
+    # --- Step 1: L2 Distributions (Regime 0 vs Rest) ---
+    # Use the L2 model (Step 1) on the original X
+    dists_1 = pairwise_distances(X, kmeans_step1.cluster_centers_, metric='euclidean')
     
-    # Normal Centroids (approximated from Step 2 results in original space)
-    c_others = []
-    for i in range(5):
-        idx = np.where(final_labels == (i+1))[0]
-        if len(idx) > 0:
-            c_others.append(X[idx].mean(axis=0))
-        else:
-            c_others.append(np.zeros(X.shape[1]))
-
-    all_centroids = np.vstack([c0, c_others]) # Shape (6, n_features)
-
-    # Calculate Distances
-    dists = pairwise_distances(X, all_centroids, metric='euclidean')
-
-    # Apply Formula: P(Ci) = 1 - (di / sum(dj)) (simplified for viz)
-    # Note: Using formula from script
-    denom_row = np.sum(dists, axis=1) # Sum of distances for each point
+    # Apply Eq (1) for the 2 clusters from Step 1
+    denom_1 = np.sum(dists_1, axis=1, keepdims=True)
+    denom_1[denom_1 == 0] = 1e-9 # Avoid division by zero
     
-    # Avoid zero division
-    denom_row[denom_row == 0] = 1e-9
-
-    raw_probs = np.zeros_like(dists)
-    for i in range(6):
-        term = 1 - (dists[:, i] / denom_row)
-        raw_probs[:, i] = term
-
-    # Normalize by sum over m
-    row_sums = raw_probs.sum(axis=1)[:, np.newaxis]
-    P_base = raw_probs / row_sums
-
-    # Scaling Logic for P_R0
-    P_max_others = np.max(P_base[:, 1:], axis=1)
-    val = 1 - P_base[:, 0]
-    val = np.clip(val, 1e-9, 1.0)
-
+    terms_1 = 1 - (dists_1 / denom_1)
+    sum_terms_1 = np.sum(terms_1, axis=1, keepdims=True)
+    probs_1 = terms_1 / sum_terms_1
+    
+    # Extract P(REGIME 0) - The probability of being in the Crisis cluster
+    P_regime0_l2 = probs_1[:, crisis_label]
+    
+    # --- Step 2: Cosine Distributions (Regimes 1-5) ---
+    # Use the Cosine model (Step 2) on Normalized X
+    # Note: K-Means on normalized data w/ Euclidean distance is equivalent to Cosine clustering
+    X_norm = normalize(X)
+    dists_2 = pairwise_distances(X_norm, kmeans_step2.cluster_centers_, metric='euclidean')
+    
+    # Apply Eq (1) for the 5 clusters from Step 2
+    denom_2 = np.sum(dists_2, axis=1, keepdims=True)
+    denom_2[denom_2 == 0] = 1e-9
+    
+    terms_2 = 1 - (dists_2 / denom_2)
+    sum_terms_2 = np.sum(terms_2, axis=1, keepdims=True)
+    probs_2 = terms_2 / sum_terms_2
+    
+    # --- Step 3: Combine & Scale (Eq 2, 3, 4) ---
+    # P_max from the "Normal" regimes (Eq 2)
+    P_max_others = np.max(probs_2, axis=1)
+    
+    # Calculate scaled P_R0 (Eq 3 & 4)
+    # P_R0 = -P_max * log2(1 - P(Regime 0))
+    val = 1 - P_regime0_l2
+    val = np.clip(val, 1e-9, 1.0) # Numerical stability
+    
     P_R0_scaled = -P_max_others * np.log2(val)
-    P_R0_scaled = np.clip(P_R0_scaled, 0, 1) 
-
-    # Re-normalize vector
-    final_probs = P_base.copy()
-    final_probs[:, 0] = P_R0_scaled
+    P_R0_scaled = np.clip(P_R0_scaled, 0, None) # Ensure non-negative
     
-    remainder = 1 - final_probs[:, 0]
-    sum_others = final_probs[:, 1:].sum(axis=1)
-    sum_others[sum_others == 0] = 1 # Avoid div by zero
-
-    for i in range(1, 6):
-        final_probs[:, i] = remainder * (final_probs[:, i] / sum_others)
-
+    # Construct final unnormalized vector
+    # Col 0 = Scaled Crisis Prob, Col 1-5 = Cosine Probs
+    final_probs_unnorm = np.zeros((X.shape[0], 6))
+    final_probs_unnorm[:, 0] = P_R0_scaled
+    final_probs_unnorm[:, 1:] = probs_2
+    
+    # Renormalize to sum to 1
+    row_sums = final_probs_unnorm.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1
+    final_probs = final_probs_unnorm / row_sums
+    
     return final_probs
 
 # ==========================================
