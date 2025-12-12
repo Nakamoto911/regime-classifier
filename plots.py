@@ -404,10 +404,19 @@ def plot_timeline_comparison(dates, final_labels, gmm_labels_aligned, recession_
     
     # Generate tick labels
     tick_vals = list(range(6))
-    tick_text = [f"{i}: {get_regime_name(i)}" for i in tick_vals]
+    
+    # Calculate counts for K-Means (Row 1)
+    unique_k, counts_k = np.unique(final_labels, return_counts=True)
+    k_counts_map = dict(zip(unique_k, counts_k))
+    tick_text_kmeans = [f"{i}: {get_regime_name(i)} ({k_counts_map.get(i, 0)})" for i in tick_vals]
 
-    fig.update_yaxes(title_text="Regime", row=1, col=1, tickvals=tick_vals, ticktext=tick_text)
-    fig.update_yaxes(title_text="Regime", row=2, col=1, tickvals=tick_vals, ticktext=tick_text)
+    # Calculate counts for GMM (Row 2)
+    unique_g, counts_g = np.unique(gmm_labels_aligned, return_counts=True)
+    g_counts_map = dict(zip(unique_g, counts_g))
+    tick_text_gmm = [f"{i}: {get_regime_name(i)} ({g_counts_map.get(i, 0)})" for i in tick_vals]
+
+    fig.update_yaxes(title_text="Regime", row=1, col=1, tickvals=tick_vals, ticktext=tick_text_kmeans)
+    fig.update_yaxes(title_text="Regime", row=2, col=1, tickvals=tick_vals, ticktext=tick_text_gmm)
     fig.update_xaxes(title_text="Date", row=2, col=1)
 
     return fig
